@@ -30,7 +30,7 @@ def inference_frames(sess, image_tensor, detection_boxes, detection_scores, dete
     image_np = np.array(image)
     # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
     image_np_expanded = np.expand_dims(image_np, axis=0)
-    # bboxes = get_info_from_DF(int(file_name.split(".")[0]), original)
+    
     # Actual detection.
     tic = time.time()
     (boxes, scores, classes, num) = sess.run(
@@ -39,7 +39,6 @@ def inference_frames(sess, image_tensor, detection_boxes, detection_scores, dete
     toc = time.time()
     t_diff = toc - tic
     fps = 1 / t_diff
-
 
     boxes = np.squeeze(boxes)
     classes = np.squeeze(classes)

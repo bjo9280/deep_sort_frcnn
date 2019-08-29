@@ -159,8 +159,6 @@ def main():
                 for det in detections:
                     bbox = det.to_tlbr()
                     cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
-                    print(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))
-                    print(int(boxs[0][0]), int(boxs[0][1]), int(boxs[0][2]), int(boxs[0][3]))
 
                 cv2.imshow('', frame)
 

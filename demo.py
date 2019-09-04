@@ -10,8 +10,10 @@ import sys
 import cv2
 import numpy as np
 from PIL import Image
+# from yolo import YOLO
 import tensorflow as tf
-
+import subprocess
+import argparse
 
 from deep_sort import preprocessing
 from deep_sort import nn_matching
@@ -19,18 +21,28 @@ from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
 from deep_sort.detection import Detection as ddet
+
+import visualization_utils as vis_util
+import label_map_util
+
 warnings.filterwarnings('ignore')
 
-PATH_TO_INFERENCE_GRAPH= 'export_frcnn/frozen_inference_graph.pb'
+# path_to_inference_graph= 'export_ssd/frozen_inference_graph.pb'
 
+def inference_frames(sess, image_tensor, detection_boxes, detection_scores, detection_classes, num_detections, frame, threshold):
 
-def inference_frames(sess, image_tensor, detection_boxes, detection_scores, detection_classes, num_detections, image, width, height, threshold):
+    image = Image.fromarray(frame[..., ::-1])
+    width = image.width
+    height = image.height
 
     image_np = np.array(image)
     # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
     image_np_expanded = np.expand_dims(image_np, axis=0)
-    
-    # Actual detection.
+
+    label_map = label_map_util.load_labelmap('s1_label_map.pbtxt')
+    categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=3, use_display_name=True)
+    category_index = label_map_util.create_category_index(categories)
+
     tic = time.time()
     (boxes, scores, classes, num) = sess.run(
         [detection_boxes, detection_scores, detection_classes, num_detections],
@@ -45,26 +57,53 @@ def inference_frames(sess, image_tensor, detection_boxes, detection_scores, dete
     return_boxs = []
 
     for i in range(int(num[0])):
-        # if classes[i] != 2.0:
-        if scores[i] < threshold:
-            continue
+        if sort_flag == '0':
+            if scores[i] < threshold:
+                continue
 
-        x = int(boxes[i][1] * width)
-        y = int(boxes[i][0] * height)
-        w = int((boxes[i][3] * width) - (boxes[i][1] * width))
-        h = int((boxes[i][2] * height) - (boxes[i][0] * height))
-        if x < 0 :
-            w = w + x
-            x = 0
-        if y < 0 :
-            h = h + y
-            y = 0
-        # return_boxs.append([boxes[i][1] * width, boxes[i][0] * height, boxes[i][3] * width, boxes[i][2] * height])
-        return_boxs.append([x,y,w,h])
+            x = int(boxes[i][1] * width)
+            y = int(boxes[i][0] * height)
+            w = int((boxes[i][3] * width) - (boxes[i][1] * width))
+            h = int((boxes[i][2] * height) - (boxes[i][0] * height))
+            if x < 0 :
+                w = w + x
+                x = 0
+            if y < 0 :
+                h = h + y
+                y = 0
 
-    return return_boxs
+            vis_util.visualize_boxes_and_labels_on_image_array(
+                frame,
+                np.squeeze(boxes),
+                np.squeeze(classes).astype(np.int32),
+                np.squeeze(scores),
+                category_index,
+                use_normalized_coordinates=True,
+                line_thickness=2,
+                min_score_thresh=threshold)
 
-def main():
+            return_boxs.append([x, y, w, h])
+        else:
+            if classes[i] != 2.0: #only
+                if scores[i] < threshold:
+                    continue
+
+                x = int(boxes[i][1] * width)
+                y = int(boxes[i][0] * height)
+                w = int((boxes[i][3] * width) - (boxes[i][1] * width))
+                h = int((boxes[i][2] * height) - (boxes[i][0] * height))
+                if x < 0:
+                    w = w + x
+                    x = 0
+                if y < 0:
+                    h = h + y
+                    y = 0
+
+                return_boxs.append([x,y,w,h])
+
+    return frame, return_boxs
+
+def main(path_to_inference_graph, input_video, output_video, sort_flag):
 
    # Definition of the parameters
     max_cosine_distance = 0.3
@@ -78,16 +117,28 @@ def main():
     metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
     tracker = Tracker(metric)
 
-    writeVideo_flag = True 
-    
-    video_capture = cv2.VideoCapture('input.mp4')
+    writeVideo_flag = True
+
+    t_d = time.time()
+    cmds = ['ffmpeg', '-i', input_video, 'temp.mp4']
+
+    return_value = subprocess.call(cmds)
+
+    if return_value:
+        print("Failure")
+    else:
+        print("Sucess!")
+
+    print(time.time()-t_d)
+
+    video_capture = cv2.VideoCapture('temp.mp4')
 
     if writeVideo_flag:
     # Define the codec and create VideoWriter object
         w = int(video_capture.get(3))
         h = int(video_capture.get(4))
         fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        out = cv2.VideoWriter('output.mp4', fourcc, 15, (w, h))
+        out = cv2.VideoWriter(output_video, fourcc, 15, (w, h))
         list_file = open('detection.txt', 'w')
         frame_index = -1
 
@@ -95,7 +146,7 @@ def main():
     detection_graph = tf.Graph()
     with detection_graph.as_default():
         od_graph_def = tf.GraphDef()
-        with tf.gfile.GFile(PATH_TO_INFERENCE_GRAPH, 'rb') as fid:
+        with tf.gfile.GFile(path_to_inference_graph, 'rb') as fid:
             serialized_graph = fid.read()
             od_graph_def.ParseFromString(serialized_graph)
             tf.import_graph_def(od_graph_def, name='')
@@ -127,9 +178,9 @@ def main():
                 t1 = time.time()
 
                # image = Image.fromarray(frame)
-                image = Image.fromarray(frame[...,::-1]) #bgr to rgb
+                #bgr to rgb
 
-                boxs = inference_frames(sess, image_tensor, detection_boxes, detection_scores, detection_classes, num_detections, image, image.width, image.height, 0.8)
+                frame, boxs = inference_frames(sess, image_tensor, detection_boxes, detection_scores, detection_classes, num_detections, frame, 0.8)
 
                 features = encoder(frame,boxs)
 
@@ -142,23 +193,25 @@ def main():
                 indices = preprocessing.non_max_suppression(boxes, nms_max_overlap, scores)
                 detections = [detections[i] for i in indices]
 
-                # Call the tracker
-                tracker.predict()
-                tracker.update(detections)
+                if sort_flag == '0':
+                    # for det in detections:
+                    #     bbox = det.to_tlbr()
+                    #     cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 0, 0), 2)
+                    #     cv2.putText(frame, str('helmet'), (int(bbox[0]), int(bbox[1])), 0, 5e-3 * 200, (255, 0, 0), 2)
+                    cv2.imshow('', frame)
+                else:
+                    # Call the tracker
+                    tracker.predict()
+                    tracker.update(detections)
 
-                for track in tracker.tracks:
-                    if not track.is_confirmed() or track.time_since_update > 1:
-                        continue
-                    bbox = track.to_tlbr()
-                    cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
-                    cv2.putText(frame, str(track.track_id),(int(bbox[0]), int(bbox[1])),0, 5e-3 * 200, (0,255,0),2)
+                    for track in tracker.tracks:
+                        if not track.is_confirmed() or track.time_since_update > 1:
+                            continue
+                        bbox = track.to_tlbr()
+                        cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(0, 255, 255), 2)
+                        cv2.putText(frame, str('helmet'),(int(bbox[0]), int(bbox[1])),0, 5e-3 * 200, (0,255,0),2)
 
-
-                for det in detections:
-                    bbox = det.to_tlbr()
-                    cv2.rectangle(frame,(int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,0,0), 2)
-
-                cv2.imshow('', frame)
+                    cv2.imshow('', frame)
 
                 if writeVideo_flag:
                     # save a frame
@@ -184,4 +237,30 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    main()
+
+    parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+    parser.add_argument(
+        '--pb_path', type=str,
+        help='path to model weight file'
+    )
+    parser.add_argument(
+        '--input', type=str,
+        help='Video input path'
+    )
+    parser.add_argument(
+        '--output', type=str,
+        help='Video output path'
+    )
+    parser.add_argument(
+        '--sort', type=str,
+        help='Video output path'
+    )
+
+    FLAGS = parser.parse_args()
+
+    path_to_inference_graph = FLAGS.pb_path
+    input_name = FLAGS.input
+    output_name = FLAGS.output
+    sort_flag = FLAGS.sort
+
+    main(path_to_inference_graph, input_name, output_name, sort_flag)

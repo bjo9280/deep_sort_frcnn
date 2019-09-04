@@ -253,7 +253,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--sort', type=str,
-        help='Video output path'
+        help='sort 0 or 1'
     )
 
     FLAGS = parser.parse_args()

@@ -209,7 +209,7 @@ def main(path_to_inference_graph, input_video, output_video, sort_flag):
                             continue
                         bbox = track.to_tlbr()
                         cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(0, 255, 255), 2)
-                        cv2.putText(frame, str('helmet'),(int(bbox[0]), int(bbox[1])),0, 5e-3 * 200, (0,255,0),2)
+                        cv2.putText(frame, str(track.track_id),(int(bbox[0]), int(bbox[1])),0, 5e-3 * 200, (0,255,0),2)
 
                     cv2.imshow('', frame)
 

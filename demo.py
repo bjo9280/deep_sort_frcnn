@@ -135,10 +135,15 @@ def main(path_to_inference_graph, input_video, output_video, sort_flag):
 
     if writeVideo_flag:
     # Define the codec and create VideoWriter object
-        w = int(video_capture.get(3))
-        h = int(video_capture.get(4))
-        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        out = cv2.VideoWriter(output_video, fourcc, 15, (w, h))
+        #w = int(video_capture.get(3))
+        #h = int(video_capture.get(4))
+        #fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+        #out = cv2.VideoWriter(output_video, fourcc, 15, (w, h))
+        video_FourCC = cv2.VideoWriter_fourcc(*'XVID')
+        video_fps = video_capture.get(cv2.CAP_PROP_FPS)
+        video_size = (int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+              int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        out = cv2.VideoWriter(output_video, video_FourCC, video_fps, video_size)
         list_file = open('detection.txt', 'w')
         frame_index = -1
 
